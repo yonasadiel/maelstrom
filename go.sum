@@ -1,2 +1,4 @@
 github.com/jepsen-io/maelstrom/demo/go v0.0.0-20230516124010-52951329816e h1:FRtVXSX5i9RcyMUNsIwjeLaAxRgZGoWLZ/0y9ZQWjOI=
 github.com/jepsen-io/maelstrom/demo/go v0.0.0-20230516124010-52951329816e/go.mod h1:i6aVIs5AIOOaQF1lAisBm7DDeWM1Iopf+26UxjagsCU=
+golang.org/x/net v0.10.0 h1:X2//UzNDwYmtCLn7To6G58Wr6f5ahEAQgKNzv9Y951M=
+golang.org/x/net v0.10.0/go.mod h1:0qNGK6F8kojg2nk9dLZ2mShWaEBan6FAoqfSigmmuDg=

@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
+	"golang.org/x/net/context"
 )
 
 type BroadcastReq struct {
@@ -13,6 +15,11 @@ type BroadcastReq struct {
 
 type BroadcastResp struct {
 	Type string `json:"type"`
+}
+
+type pendingBroadcast struct {
+	dest string
+	req  BroadcastReq
 }
 
 func (s *Server) Broadcast(msg maelstrom.Message) (any, error) {
@@ -36,19 +43,27 @@ func (s *Server) Broadcast(msg maelstrom.Message) (any, error) {
 		s.broadcastedLock.Unlock()
 
 		for _, nodeID := range s.n.NodeIDs() {
-			if nodeID == s.n.ID() {
+			if nodeID == s.n.ID() || nodeID == msg.Src {
 				continue
 			}
 			broadcastReq := BroadcastReq{
 				Type:    MsgTypeBroadcast,
 				Message: req.Message,
 			}
-			if err := s.n.RPC(nodeID, broadcastReq, nil); err != nil {
-				return nil, err
-			}
+			s.broadcastQueue <- pendingBroadcast{nodeID, broadcastReq}
 		}
 	}
 
 	resp := BroadcastResp{Type: MsgTypeBroadcastOk}
 	return resp, nil
+}
+
+func (s *Server) sendPendingBroadcast() {
+	for b := range s.broadcastQueue {
+		ctx, cancelFn := context.WithTimeout(context.Background(), time.Second)
+		if _, err := s.n.SyncRPC(ctx, b.dest, b.req); err != nil {
+			s.broadcastQueue <- b
+		}
+		cancelFn()
+	}
 }
