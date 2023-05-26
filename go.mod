@@ -1,4 +1,4 @@
-module github.com/yonasadiel/maelstro/3-broadcast
+module github.com/yonasadiel/maelstro
 
 go 1.20
 
