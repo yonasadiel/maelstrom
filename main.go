@@ -2,12 +2,15 @@ package main
 
 import (
 	"log"
+	"os"
 	"sync"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
 const (
+	MsgTypeInit        = "init"
+	MsgTypeInitOk      = "init_ok"
 	MsgTypeEcho        = "echo"
 	MsgTypeEchoOk      = "echo_ok"
 	MsgTypeGenerate    = "generate"
@@ -17,11 +20,19 @@ const (
 	MsgTypeRead        = "read"
 	MsgTypeReadOk      = "read_ok"
 	MsgTypeTopology    = "topology"
-	MsgTypeTopologyOk  = "topology"
+	MsgTypeTopologyOk  = "topology_ok"
+	MsgTypeAdd         = "add"
+	MsgTypeAddOk       = "add_ok"
+
+	WorkloadBroadcast       = "broadcast"
+	WorkloadGrowOnlyCounter = "grow-only-counter"
 )
 
 type Server struct {
-	n *maelstrom.Node
+	n           *maelstrom.Node
+	seqKV       *maelstrom.KV
+	initialized chan struct{}
+	workload    string
 
 	// for Unique ID module
 	id int64
@@ -32,29 +43,43 @@ type Server struct {
 	broadcastedSet  map[int64]struct{}
 }
 
-func wrapHandler(n *maelstrom.Node, f func(msg maelstrom.Message) (any, error)) func(msg maelstrom.Message) error {
+func (s *Server) wrapHandler(f func(msg maelstrom.Message) (any, error), waitForInit bool) func(msg maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
+		if waitForInit {
+			<-s.initialized
+		}
 		resp, err := f(msg)
 		if err != nil {
 			return err
 		}
-		return n.Reply(msg, resp)
+		return s.n.Reply(msg, resp)
 	}
 }
 
 func main() {
 	n := maelstrom.NewNode()
+	seqKV := maelstrom.NewSeqKV(n)
 	s := Server{
-		n:              n,
-		broadcastedSet: make(map[int64]struct{}, 100),
+		n:               n,
+		seqKV:           seqKV,
+		initialized:     make(chan struct{}),
+		workload:        os.Getenv("MWORKLOAD"),
+		id:              0,
+		broadcastedLock: sync.RWMutex{},
+		broadcasted:     make([]int64, 0),
+		broadcastedSet:  make(map[int64]struct{}, 0),
 	}
-	n.Handle("echo", wrapHandler(n, s.Echo))
-	n.Handle("generate", wrapHandler(n, s.UniqueIds))
-	n.Handle("broadcast", wrapHandler(n, s.Broadcast))
-	n.Handle("read", wrapHandler(n, s.Read))
-	n.Handle("topology", wrapHandler(n, s.Topology))
+	n.Handle("init", s.wrapHandler(s.Init, false))
+	n.Handle("echo", s.wrapHandler(s.Echo, false))
+	n.Handle("generate", s.wrapHandler(s.UniqueIds, false))
+	n.Handle("broadcast", s.wrapHandler(s.Broadcast, false))
+	n.Handle("read", s.wrapHandler(s.Read, true))
+	n.Handle("topology", s.wrapHandler(s.Topology, false))
+	n.Handle("add", s.wrapHandler(s.Add, true))
 
-	go s.sendPendingBroadcast()
+	if s.workload == WorkloadBroadcast {
+		go s.sendPendingBroadcast()
+	}
 
 	if err := n.Run(); err != nil {
 		log.Fatal(err)

@@ -16,7 +16,7 @@ const (
 
 type BroadcastReq struct {
 	Type    string `json:"type"`
-	Message int64  `json:"message"`
+	Message *int64 `json:"message,omitempty"`
 	// Added by myself, for gossip protocol
 	Messages []int64 `json:"messages,omitempty"`
 }
@@ -31,8 +31,11 @@ func (s *Server) Broadcast(msg maelstrom.Message) (any, error) {
 		return nil, err
 	}
 
-	missing := make([]int64, 0, len(req.Messages))
-	incoming := append(req.Messages, req.Message)
+	missing := make([]int64, 0)
+	incoming := req.Messages[:]
+	if req.Message != nil {
+		incoming = append(incoming, *req.Message)
+	}
 	s.broadcastedLock.RLock()
 	for _, m := range incoming {
 		if _, ok := s.broadcastedSet[m]; !ok {
