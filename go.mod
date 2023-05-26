@@ -1,4 +1,4 @@
-module github.com/yonasadiel/maelstro
+module github.com/yonasadiel/maelstrom
 
 go 1.20
 
