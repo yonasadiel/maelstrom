@@ -61,3 +61,19 @@ test-grow-only-counter:
 		--rate 100 \
 		--time-limit 20 \
 		--nemesis partition
+
+test-kafka-a:
+	MWORKLOAD=kafka \
+		${MAELSTROM_DIR}/maelstrom test -w kafka --bin ${OUT} \
+		--node-count 1 \
+		--rate 1000 \
+		--time-limit 20 \
+		--concurrency 2n
+
+test-kafka-b:
+	MWORKLOAD=kafka \
+		${MAELSTROM_DIR}/maelstrom test -w kafka --bin ${OUT} \
+		--node-count 1 \
+		--rate 1000 \
+		--time-limit 20 \
+		--concurrency 2n

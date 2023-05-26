@@ -9,20 +9,28 @@ import (
 )
 
 const (
-	MsgTypeInit        = "init"
-	MsgTypeInitOk      = "init_ok"
-	MsgTypeEcho        = "echo"
-	MsgTypeEchoOk      = "echo_ok"
-	MsgTypeGenerate    = "generate"
-	MsgTypeGenerateOk  = "generate_ok"
-	MsgTypeBroadcast   = "broadcast"
-	MsgTypeBroadcastOk = "broadcast_ok"
-	MsgTypeRead        = "read"
-	MsgTypeReadOk      = "read_ok"
-	MsgTypeTopology    = "topology"
-	MsgTypeTopologyOk  = "topology_ok"
-	MsgTypeAdd         = "add"
-	MsgTypeAddOk       = "add_ok"
+	MsgTypeInit                   = "init"
+	MsgTypeInitOk                 = "init_ok"
+	MsgTypeEcho                   = "echo"
+	MsgTypeEchoOk                 = "echo_ok"
+	MsgTypeGenerate               = "generate"
+	MsgTypeGenerateOk             = "generate_ok"
+	MsgTypeBroadcast              = "broadcast"
+	MsgTypeBroadcastOk            = "broadcast_ok"
+	MsgTypeRead                   = "read"
+	MsgTypeReadOk                 = "read_ok"
+	MsgTypeTopology               = "topology"
+	MsgTypeTopologyOk             = "topology_ok"
+	MsgTypeAdd                    = "add"
+	MsgTypeAddOk                  = "add_ok"
+	MsgTypeSend                   = "send"
+	MsgTypeSendOk                 = "send_ok"
+	MsgTypePoll                   = "poll"
+	MsgTypePollOk                 = "poll_ok"
+	MsgTypeCommitOffsets          = "commit_offsets"
+	MsgTypeCommitOffsetsOk        = "commit_offsets_ok"
+	MsgTypeListCommittedOffsets   = "list_committed_offsets"
+	MsgTypeListCommittedOffsetsOk = "list_committed_offsets_ok"
 
 	WorkloadBroadcast       = "broadcast"
 	WorkloadGrowOnlyCounter = "grow-only-counter"
@@ -41,6 +49,12 @@ type Server struct {
 	broadcastedLock sync.RWMutex
 	broadcasted     []int64
 	broadcastedSet  map[int64]struct{}
+
+	// for Kafka module
+	msgsLock    sync.RWMutex
+	msgs        map[string][]KafkaMessage // key -> list of messages
+	offsetsLock sync.RWMutex
+	offsets     map[string]int64 // key -> offset
 }
 
 func (s *Server) wrapHandler(f func(msg maelstrom.Message) (any, error), waitForInit bool) func(msg maelstrom.Message) error {
@@ -68,6 +82,10 @@ func main() {
 		broadcastedLock: sync.RWMutex{},
 		broadcasted:     make([]int64, 0),
 		broadcastedSet:  make(map[int64]struct{}, 0),
+		msgsLock:        sync.RWMutex{},
+		msgs:            make(map[string][]KafkaMessage),
+		offsetsLock:     sync.RWMutex{},
+		offsets:         make(map[string]int64),
 	}
 	n.Handle("init", s.wrapHandler(s.Init, false))
 	n.Handle("echo", s.wrapHandler(s.Echo, false))
@@ -76,6 +94,10 @@ func main() {
 	n.Handle("read", s.wrapHandler(s.Read, true))
 	n.Handle("topology", s.wrapHandler(s.Topology, false))
 	n.Handle("add", s.wrapHandler(s.Add, true))
+	n.Handle("send", s.wrapHandler(s.Send, true))
+	n.Handle("poll", s.wrapHandler(s.Poll, true))
+	n.Handle("commit_offsets", s.wrapHandler(s.CommitOffsets, true))
+	n.Handle("list_committed_offsets", s.wrapHandler(s.ListCommittedOffsets, true))
 
 	if s.workload == WorkloadBroadcast {
 		go s.sendPendingBroadcast()
