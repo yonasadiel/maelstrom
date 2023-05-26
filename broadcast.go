@@ -2,24 +2,27 @@ package main
 
 import (
 	"encoding/json"
+	"math/rand"
 	"time"
 
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"golang.org/x/net/context"
 )
 
+const (
+	GossipPeriod  = 30 * time.Millisecond
+	GossipTimeout = 300 * time.Millisecond
+)
+
 type BroadcastReq struct {
 	Type    string `json:"type"`
 	Message int64  `json:"message"`
+	// Added by myself, for gossip protocol
+	Messages []int64 `json:"messages,omitempty"`
 }
 
 type BroadcastResp struct {
 	Type string `json:"type"`
-}
-
-type pendingBroadcast struct {
-	dest string
-	req  BroadcastReq
 }
 
 func (s *Server) Broadcast(msg maelstrom.Message) (any, error) {
@@ -28,30 +31,23 @@ func (s *Server) Broadcast(msg maelstrom.Message) (any, error) {
 		return nil, err
 	}
 
-	exist := false
+	missing := make([]int64, 0, len(req.Messages))
+	incoming := append(req.Messages, req.Message)
 	s.broadcastedLock.RLock()
-	for i := 0; !exist && i < len(s.broadcasted); i++ {
-		if s.broadcasted[i] == req.Message {
-			exist = true
+	for _, m := range incoming {
+		if _, ok := s.broadcastedSet[m]; !ok {
+			missing = append(missing, m)
 		}
 	}
 	s.broadcastedLock.RUnlock()
 
-	if !exist {
+	if len(missing) > 0 {
 		s.broadcastedLock.Lock()
-		s.broadcasted = append(s.broadcasted, req.Message)
-		s.broadcastedLock.Unlock()
-
-		for _, nodeID := range s.n.NodeIDs() {
-			if nodeID == s.n.ID() || nodeID == msg.Src {
-				continue
-			}
-			broadcastReq := BroadcastReq{
-				Type:    MsgTypeBroadcast,
-				Message: req.Message,
-			}
-			s.broadcastQueue <- pendingBroadcast{nodeID, broadcastReq}
+		for _, m := range missing {
+			s.broadcasted = append(s.broadcasted, m)
+			s.broadcastedSet[m] = struct{}{}
 		}
+		s.broadcastedLock.Unlock()
 	}
 
 	resp := BroadcastResp{Type: MsgTypeBroadcastOk}
@@ -59,11 +55,31 @@ func (s *Server) Broadcast(msg maelstrom.Message) (any, error) {
 }
 
 func (s *Server) sendPendingBroadcast() {
-	for b := range s.broadcastQueue {
-		ctx, cancelFn := context.WithTimeout(context.Background(), time.Second)
-		if _, err := s.n.SyncRPC(ctx, b.dest, b.req); err != nil {
-			s.broadcastQueue <- b
+	ticker := time.NewTicker(GossipPeriod)
+	for range ticker.C {
+		nodeIDs := s.n.NodeIDs()
+		if len(nodeIDs) == 0 {
+			continue
 		}
-		cancelFn()
+
+		s.broadcastedLock.RLock()
+		messages := make([]int64, len(s.broadcasted))
+		for i := range s.broadcasted {
+			messages[i] = s.broadcasted[i]
+		}
+		s.broadcastedLock.RUnlock()
+
+		req := BroadcastReq{
+			Type:     MsgTypeBroadcast,
+			Messages: messages,
+		}
+		dest := nodeIDs[rand.Intn(len(nodeIDs))]
+		go func() {
+			ctx, cancelFn := context.WithTimeout(context.Background(), GossipTimeout)
+			defer cancelFn()
+			if _, err := s.n.SyncRPC(ctx, dest, req); err != nil {
+				// TODO handle error
+			}
+		}()
 	}
 }

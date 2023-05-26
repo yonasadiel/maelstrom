@@ -29,7 +29,7 @@ type Server struct {
 	// for Broadcast module
 	broadcastedLock sync.RWMutex
 	broadcasted     []int64
-	broadcastQueue  chan pendingBroadcast
+	broadcastedSet  map[int64]struct{}
 }
 
 func wrapHandler(n *maelstrom.Node, f func(msg maelstrom.Message) (any, error)) func(msg maelstrom.Message) error {
@@ -46,7 +46,7 @@ func main() {
 	n := maelstrom.NewNode()
 	s := Server{
 		n:              n,
-		broadcastQueue: make(chan pendingBroadcast, 10000),
+		broadcastedSet: make(map[int64]struct{}, 100),
 	}
 	n.Handle("echo", wrapHandler(n, s.Echo))
 	n.Handle("generate", wrapHandler(n, s.UniqueIds))

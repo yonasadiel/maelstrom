@@ -40,3 +40,10 @@ test-broadcast-c:
 		--rate 10 \
 		--time-limit 20 \
 		--nemesis partition
+
+test-broadcast-d:
+	${MAELSTROM_DIR}/maelstrom test -w broadcast --bin ${OUT} \
+		--node-count 25 \
+		--rate 100 \
+		--time-limit 20 \
+		--latency 100
