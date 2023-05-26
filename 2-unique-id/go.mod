@@ -1,4 +1,4 @@
-module github.com/yonasadiel/maelstro/1-echo
+module github.com/yonasadiel/maelstro/2-unique-id
 
 go 1.20
 

@@ -1,4 +1,4 @@
-module github.com/yonasadiel/maelstro/1-echo
+module github.com/yonasadiel/maelstro/3-broadcast
 
 go 1.20
 
